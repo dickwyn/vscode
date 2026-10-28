@@ -100,6 +100,20 @@ export function buildManagedFamilyRule(family: ManagedRuleFamily): string {
 }
 
 /**
+ * Whether a `deny` or `ask` list in a managed permissions document contains a
+ * {@link ManagedRuleFamily.Read} rule. The SDK matches family names without
+ * regard to case.
+ */
+export function hasManagedReadRestriction(permissions: unknown): boolean {
+	if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) {
+		return false;
+	}
+	const lists = permissions as { readonly deny?: unknown; readonly ask?: unknown };
+	return [lists.deny, lists.ask].some(rules => Array.isArray(rules) && rules.some(rule =>
+		typeof rule === 'string' && /^read(?:\(|$)/i.test(rule.trim())));
+}
+
+/**
  * Builds a single managed permission rule, or returns `undefined` when the
  * argument cannot be expressed in the SDK grammar.
  *

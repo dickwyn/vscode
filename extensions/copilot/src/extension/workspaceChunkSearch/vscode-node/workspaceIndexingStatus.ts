@@ -22,7 +22,8 @@ const reauthenticateCommandId = '_copilot.workspaceIndex.signInAgain';
 
 /** Provided by VS Code: whether Copilot managed permissions disable semantic search. */
 const isSemanticSearchDisabledByManagedPolicyCommandId = '_chat.isSemanticSearchDisabledByManagedPolicy';
-const whenAccountPolicySettledCommandId = '_workbench.whenAccountPolicySettled';
+/** Provided by VS Code: resolves with that value once it differs from the one passed in. */
+const whenSemanticSearchManagedPolicyChangesCommandId = '_chat.whenSemanticSearchManagedPolicyChanges';
 
 const codebaseSemanticSearchDocsLink = 'https://aka.ms/vscode-copilot-workspace-remote-index';
 const externalIngestPolicyLink = 'https://aka.ms/vscode-external-ingest-policy';
@@ -98,11 +99,24 @@ export class ChatStatusWorkspaceIndexingStatus extends Disposable {
 		// And kick off async update to get the real status
 		this._updateStatusItem();
 
-		// Managed policy can resolve after startup, so check again once it has settled.
-		Promise.resolve(vscode.commands.executeCommand(whenAccountPolicySettledCommandId)).then(
-			() => this._updateStatusItem(),
-			() => { /* Older VS Code builds don't provide the command. */ },
-		);
+		// Managed policy can resolve after startup and change at any time.
+		void this._watchManagedPolicy();
+	}
+
+	private async _watchManagedPolicy(): Promise<void> {
+		let disabled: boolean | undefined;
+		while (!this._store.isDisposed) {
+			try {
+				disabled = await vscode.commands.executeCommand<boolean>(whenSemanticSearchManagedPolicyChangesCommandId, disabled);
+			} catch {
+				// Older VS Code builds don't provide the command.
+				return;
+			}
+			if (this._store.isDisposed) {
+				return;
+			}
+			this._updateStatusItem();
+		}
 	}
 
 	private async _isSemanticSearchDisabledByManagedPolicy(): Promise<boolean> {

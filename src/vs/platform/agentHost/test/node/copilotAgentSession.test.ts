@@ -25624,6 +25624,7 @@ Use the attached image as context.
 			test(`client tool replacement releases ${toolName} handlers without a permission callback`, async () => {
 				const activeClientToolSet = activeClientToolSetWith('client');
 				const { session, runtime, mockSession, signals, onProgress } = await createAgentSession(disposables, { clientSnapshot: snapshot, activeClientToolSet });
+				runtime.setApprovalPolicy?.({ source: 'none', serverManaged: false, deviceManaged: false, failClosed: false, bypassPermissionsDisabled: false, managedKeys: [] }, {});
 				runtime.createClientSdkTools(true);
 				runtime.configureClientTools!(clientToolConfiguration(true));
 				const definitions = [...snapshot.tools, { name: toolName }];
@@ -26111,9 +26112,31 @@ Use the attached image as context.
 				});
 			});
 
+			test('a managed rule that arrives while a client runs the call keeps the client result from the model', async () => {
+				const { session, runtime, signals, start, invoke } = await createSemanticSearchSession();
+				runtime.setApprovalPolicy?.(resolvedPolicy(), {});
+
+				start('tc-pending');
+				const result = invoke('tc-pending');
+				const ready = readyStates(signals);
+				runtime.setApprovalPolicy?.(resolvedPolicy({ deny: ['Read(/denied/**)'] }), {});
+				session.handleClientToolCallComplete('tc-pending', { success: true, pastTenseMessage: 'Searched codebase', content: [{ type: ToolResultContentType.Text, text: 'MSRC_CANARY' }] });
+
+				const { textResultForLlm, resultType } = await result;
+				assert.deepStrictEqual({
+					clientRan: ready.some(state => state.contributor?.kind === ToolCallContributorKind.Client),
+					resultType,
+					leaked: textResultForLlm.includes('MSRC_CANARY'),
+				}, {
+					clientRan: true,
+					resultType: 'denied',
+					leaked: false,
+				});
+			});
+
 			const denialScenarios: readonly [string, (runtime: PolicyRuntime) => void, Record<string, unknown> | undefined][] = [
 				['an active managed rule', runtime => runtime.setApprovalPolicy?.(resolvedPolicy({ ask: ['Shell'] }), {}), undefined],
-				['a bridged managed rule', runtime => runtime.setApprovalPolicy?.(resolvedPolicy(), { ask: ['Shell'] }), undefined],
+				['a bridged managed read rule', runtime => runtime.setApprovalPolicy?.(resolvedPolicy(), { deny: ['Read(/denied/**)'] }), undefined],
 				['a fail-closed managed policy', runtime => runtime.setApprovalPolicy?.({ ...resolvedPolicy(), failClosed: true }, {}), undefined],
 				['an unresolved managed policy', () => { }, undefined],
 				['an active managed rule in Bypass Approvals', runtime => runtime.setApprovalPolicy?.(resolvedPolicy({ ask: ['Read(/secret/**)'] }), {}), { [SessionConfigKey.AutoApprove]: 'autoApprove' }],

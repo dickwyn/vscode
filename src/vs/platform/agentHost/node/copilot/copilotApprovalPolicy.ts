@@ -5,6 +5,7 @@
 
 import type { JsonValue, ManagedSettingsPermissions, PermissionMode, SessionEventPayload } from '@github/copilot-sdk';
 import { isObject } from '../../../../base/common/types.js';
+import { hasManagedReadRestriction } from '../../common/agentHostManagedRules.js';
 import { AutoApproveLevel, platformSessionSchema } from '../../common/agentHostSchema.js';
 import { SEMANTIC_SEARCH_TOOL_NAME } from '../../common/semanticSearchConstants.js';
 import { ResolveSessionConfigResult } from '../../common/state/protocol/commands.js';
@@ -64,26 +65,39 @@ function hasManagedRules(permissions: unknown): boolean {
 }
 
 /**
+ * Whether a resolved policy's permissions come only from the session-local
+ * layer the SDK host injects. Such rules are non-activating: they restrict only
+ * the requests they match.
+ */
+function isClientManagedOnly(policy: ManagedSettingsResolvedData): boolean {
+	return policy.clientManaged === true && !policy.serverManaged && !policy.deviceManaged && policy.policyHelperManaged !== true;
+}
+
+/**
  * Whether Copilot managed permissions deny the
  * {@link MANAGED_WORKSPACE_RETRIEVAL_CLIENT_TOOLS}, given every known managed
  * policy snapshot and the rules bridged from VS Code settings.
  *
- * Once any managed rule is active the runtime requires approval for reads no
- * rule matches. These tools can return excerpts from any workspace file, but
- * the host cannot guarantee a human decision for them: they run on a client,
- * whose own tool confirmation can approve without asking. So any active
- * managed rule, a fail-closed policy, or no resolved policy at all denies
- * them; only a session with no managed rules may use them.
+ * Once an enterprise (server, device, or policy helper) rule is active the
+ * runtime requires approval for reads no rule matches. These tools can return
+ * excerpts from any workspace file, but the host cannot guarantee a human
+ * decision for them: they run on a client, whose own tool confirmation can
+ * approve without asking. So any enterprise rule, a fail-closed policy, or no
+ * resolved policy at all denies them. Rules bridged from VS Code settings are
+ * non-activating and restrict only what they match, so only a bridged `Read`
+ * deny or ask rule denies them.
  */
 export function isManagedWorkspaceRetrievalDenied(policies: readonly (ManagedSettingsResolvedData | undefined)[], bridged: ManagedSettingsPermissions): boolean {
 	const resolved = policies.filter(policy => policy !== undefined);
 	return resolved.length === 0
-		|| hasManagedRules(bridged)
-		|| resolved.some(policy => policy.failClosed
-			|| policy.permissionsContext?.failClosed
-			|| policy.permissionsAllowIntersected
-			|| hasManagedRules(getResolvedManagedPermissions(policy))
-			|| hasManagedRules(policy.permissionsContext?.permissions));
+		|| hasManagedReadRestriction(bridged)
+		|| resolved.some(policy => {
+			if (policy.failClosed || policy.permissionsContext?.failClosed || policy.permissionsAllowIntersected) {
+				return true;
+			}
+			const restricts = isClientManagedOnly(policy) ? hasManagedReadRestriction : hasManagedRules;
+			return restricts(getResolvedManagedPermissions(policy)) || restricts(policy.permissionsContext?.permissions);
+		});
 }
 
 interface ICopilotApprovalInputs {

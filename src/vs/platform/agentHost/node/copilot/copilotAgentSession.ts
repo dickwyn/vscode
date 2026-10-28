@@ -4131,10 +4131,12 @@ export class CopilotAgentSession extends Disposable {
 								: this._toolSearchFailure('Tool call cancelled: client tool replacement was not applied');
 						}
 						this._surfaceUnobservedClientToolStart(invocation);
-						if (this._managedDeniedClientToolCalls.delete(toolCallId) || this._isManagedClientToolDenied(def.name)) {
+						if (this._managedDeniedClientToolCalls.delete(toolCallId) || this._isManagedClientToolDenied(def)) {
 							return this._denyManagedClientToolCall(def.name, toolCallId);
 						}
-						return await this._pendingClientToolCalls.register(toolCallId);
+						const result = await this._pendingClientToolCalls.register(toolCallId);
+						// Managed policy can arrive while a client runs the call; its result must not reach the model then.
+						return this._isManagedClientToolDenied(def) ? this._denyManagedClientToolCall(def.name, toolCallId) : result;
 					} catch (error) {
 						this._logService.error(error, `[Copilot:${this.sessionId}] Failed in client tool handler: tool=${def.name}, toolCallId=${toolCallId}`);
 						throw error;
@@ -4169,8 +4171,10 @@ export class CopilotAgentSession extends Disposable {
 	 * policy never offers the tool; this covers policy the runtime reapplies
 	 * mid-session.
 	 */
-	private _isManagedClientToolDenied(toolName: string): boolean {
-		return MANAGED_WORKSPACE_RETRIEVAL_CLIENT_TOOLS.has(toolName) && this._approvalPolicy.isManagedWorkspaceRetrievalDenied();
+	private _isManagedClientToolDenied(definition: ToolDefinition | undefined): boolean {
+		return !!definition && MANAGED_WORKSPACE_RETRIEVAL_CLIENT_TOOLS.has(definition.name)
+			&& getClientToolSdkPolicy(definition).skipPermission === true
+			&& this._approvalPolicy.isManagedWorkspaceRetrievalDenied();
 	}
 
 	private _denyManagedClientToolCall(toolName: string, toolCallId: string): ToolResultObject {
@@ -9470,7 +9474,7 @@ export class CopilotAgentSession extends Disposable {
 			const clientToolName = this._clientToolName(e.data.toolName);
 			const isClientTool = replacementFailure !== undefined || this._clientToolNames.has(clientToolName);
 			const isToolSearch = this._isToolSearchActive() && e.data.toolName === RUNTIME_TOOL_SEARCH_TOOL_NAME;
-			const managedDenied = replacementFailure === undefined && isClientTool && this._isManagedClientToolDenied(clientToolName);
+			const managedDenied = replacementFailure === undefined && isClientTool && this._isManagedClientToolDenied(this._getClientToolDefinition(clientToolName));
 			if (managedDenied) {
 				this._managedDeniedClientToolCalls.add(e.data.toolCallId);
 			}

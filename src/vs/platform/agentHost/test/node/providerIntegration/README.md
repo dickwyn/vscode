@@ -32,7 +32,7 @@ Local and DevOps runs default to `AGENT_HOST_TEST_PROFILE=full`. GitHub PR integ
 ./scripts/test-integration.sh --run src/vs/platform/agentHost/test/node/providerIntegration/copilotImageGeneration.integrationTest.ts
 ```
 
-`copilotManagedSemanticSearch.integrationTest.ts` publishes the client `semantic_search` tool to the bundled runtime against a synthetic CAPI and checks the tools in the model request. The tool is offered without managed permission rules and withheld while a client-bridged managed rule is active, because the runtime cannot match a search query against managed `Read` rules. Run it with:
+`copilotManagedSemanticSearch.integrationTest.ts` publishes the client `semantic_search` tool to the bundled runtime against a synthetic CAPI and checks the tools in the model request. The tool is offered without managed permission rules and with only bridged non-read rules, and withheld while a bridged managed `Read` rule is active, because the runtime cannot match a search query against managed `Read` rules. Run it with:
 
 ```bash
 ./scripts/test-integration.sh --run src/vs/platform/agentHost/test/node/providerIntegration/copilotManagedSemanticSearch.integrationTest.ts

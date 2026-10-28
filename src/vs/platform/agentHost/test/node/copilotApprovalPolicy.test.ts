@@ -99,7 +99,7 @@ suite('Copilot approval policy', () => {
 		assert.deepStrictEqual(getCopilotApprovalPolicy({ ...baseline, failClosed: true, settings: { permissions: { disableBypassPermissionsMode: 'enable' } } }, true).available, ['default']);
 	});
 
-	test('any active managed rule denies workspace retrieval that the SDK cannot match against read rules', () => {
+	test('enterprise managed rules and bridged read restrictions deny workspace retrieval that the SDK cannot match against read rules', () => {
 		const withPermissions = (permissions: { [key: string]: JsonValue }): Resolved => ({ ...baseline, settings: { permissions } });
 		const sessionPolicy = (configure: (policy: CopilotSessionApprovalPolicy) => void) => {
 			const policy = new CopilotSessionApprovalPolicy();
@@ -119,6 +119,12 @@ suite('Copilot approval policy', () => {
 			allowIntersected: isManagedWorkspaceRetrievalDenied([{ ...baseline, permissionsAllowIntersected: true }], {}),
 			contextRule: isManagedWorkspaceRetrievalDenied([{ ...baseline, permissionsContext: { failClosed: false, permissions: { deny: ['Read(/denied/**)'] } } }], {}),
 			bridgedShellAsk: isManagedWorkspaceRetrievalDenied([baseline], { ask: ['Shell'] }),
+			bridgedDomainDeny: isManagedWorkspaceRetrievalDenied([baseline], { deny: ['Domain'] }),
+			bridgedReadDeny: isManagedWorkspaceRetrievalDenied([baseline], { deny: ['Read(/denied/**)'] }),
+			bridgedReadAsk: isManagedWorkspaceRetrievalDenied([baseline], { ask: ['read'] }),
+			clientOnlyShellAsk: isManagedWorkspaceRetrievalDenied([{ ...withPermissions({ ask: ['Shell'] }), clientManaged: true, permissionsContext: { failClosed: false, permissions: { ask: ['Shell'] } } }], {}),
+			clientOnlyReadDeny: isManagedWorkspaceRetrievalDenied([{ ...withPermissions({ deny: ['Read(/denied/**)'] }), clientManaged: true }], {}),
+			clientAndServerShellAsk: isManagedWorkspaceRetrievalDenied([{ ...withPermissions({ ask: ['Shell'] }), clientManaged: true, serverManaged: true }], {}),
 			runtimeRule: isManagedWorkspaceRetrievalDenied([baseline, withPermissions({ deny: ['Read(/denied/**)'] })], {}),
 			failClosed: isManagedWorkspaceRetrievalDenied([{ ...baseline, failClosed: true }], {}),
 			contextFailClosed: isManagedWorkspaceRetrievalDenied([{ ...baseline, permissionsContext: { failClosed: true } }], {}),
@@ -127,6 +133,7 @@ suite('Copilot approval policy', () => {
 			sessionUnresolved: sessionPolicy(() => { }),
 			sessionLaunch: sessionPolicy(policy => policy.setLaunchPolicy(baseline, {})),
 			sessionLaunchBridged: sessionPolicy(policy => policy.setLaunchPolicy(baseline, { ask: ['Shell'] })),
+			sessionLaunchBridgedRead: sessionPolicy(policy => policy.setLaunchPolicy(baseline, { deny: ['Read(/denied/**)'] })),
 			sessionRuntime: sessionPolicy(policy => {
 				policy.setLaunchPolicy(baseline, {});
 				policy.observeRuntimePolicy(withPermissions({ ask: ['Shell'] }));
@@ -143,7 +150,13 @@ suite('Copilot approval policy', () => {
 			allow: true,
 			allowIntersected: true,
 			contextRule: true,
-			bridgedShellAsk: true,
+			bridgedShellAsk: false,
+			bridgedDomainDeny: false,
+			bridgedReadDeny: true,
+			bridgedReadAsk: true,
+			clientOnlyShellAsk: false,
+			clientOnlyReadDeny: true,
+			clientAndServerShellAsk: true,
 			runtimeRule: true,
 			failClosed: true,
 			contextFailClosed: true,
@@ -151,7 +164,8 @@ suite('Copilot approval policy', () => {
 			onlyUnresolved: true,
 			sessionUnresolved: true,
 			sessionLaunch: false,
-			sessionLaunchBridged: true,
+			sessionLaunchBridged: false,
+			sessionLaunchBridgedRead: true,
 			sessionRuntime: true,
 		});
 	});

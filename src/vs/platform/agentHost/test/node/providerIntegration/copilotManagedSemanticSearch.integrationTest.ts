@@ -28,8 +28,8 @@ interface IChatRequest {
 
 /**
  * Checks, against the bundled runtime, whether the client's semantic search
- * reaches the model. Managed permission rules cannot be matched against a
- * search query, so the host must not offer the tool while any rule is active.
+ * reaches the model. Managed `Read` rules cannot be matched against a search
+ * query, so the host must not offer the tool while one restricts reads.
  */
 suite('Agent Host Provider Integration — Copilot managed semantic search', function () {
 	this.timeout(120_000);
@@ -159,9 +159,16 @@ suite('Agent Host Provider Integration — Copilot managed semantic search', fun
 		});
 	});
 
-	test('withholds semantic search while a managed permission rule is active', async () => {
-		assert.deepStrictEqual({ ...await offersSemanticSearch({ ask: ['Shell'] }), unexpectedRequests }, {
+	test('withholds semantic search while a bridged managed read rule is active', async () => {
+		assert.deepStrictEqual({ ...await offersSemanticSearch({ deny: ['Read(/denied/**)'] }), unexpectedRequests }, {
 			offered: false, response: 'SEMANTIC_SEARCH_READY', unexpectedRequests: [],
+		});
+	});
+
+	test('offers semantic search while only bridged non-read rules are active', async () => {
+		// Bridged rules are non-activating, so a shell ask leaves reads unrestricted.
+		assert.deepStrictEqual({ ...await offersSemanticSearch({ ask: ['Shell'], deny: ['Domain'] }), unexpectedRequests }, {
+			offered: true, response: 'SEMANTIC_SEARCH_READY', unexpectedRequests: [],
 		});
 	});
 });
