@@ -198,8 +198,6 @@ export class MobileHostFilterActionViewItem extends HostFilterActionViewItem {
 
 		// Block taps on the sheet body itself from dismissing.
 		disposables.add(dom.addDisposableListener(sheet, dom.EventType.CLICK, e => e.stopPropagation()));
-		disposables.add(Gesture.addTarget(sheet));
-		disposables.add(dom.addDisposableListener(sheet, TouchEventType.Tap, e => dom.EventHelper.stop(e, true)));
 
 		// --- Dismissal: backdrop tap + Escape -------------------------------
 		disposables.add(Gesture.addTarget(backdrop));
@@ -289,9 +287,7 @@ export class MobileHostFilterActionViewItem extends HostFilterActionViewItem {
 			finish();
 		};
 
-		disposables.add(Gesture.addTarget(row));
 		disposables.add(dom.addDisposableListener(row, dom.EventType.CLICK, e => select(e)));
-		disposables.add(dom.addDisposableListener(row, TouchEventType.Tap, e => select(e)));
 		return row;
 	}
 

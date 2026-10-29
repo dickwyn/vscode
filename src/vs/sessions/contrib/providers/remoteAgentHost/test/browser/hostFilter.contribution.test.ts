@@ -4,12 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import sinon from 'sinon';
 import { IAction } from '../../../../../../base/common/actions.js';
 import { Codicon } from '../../../../../../base/common/codicons.js';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
 import { DisposableStore } from '../../../../../../base/common/lifecycle.js';
+import { Gesture } from '../../../../../../base/browser/touch.js';
 import { upcastPartial } from '../../../../../../base/test/common/mock.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../base/test/common/utils.js';
+import { mainWindow } from '../../../../../../base/browser/window.js';
 import { IActionViewItemService } from '../../../../../../platform/actions/browser/actionViewItemService.js';
 import { MenuWorkbenchToolBar } from '../../../../../../platform/actions/browser/toolbar.js';
 import { IMenuService, MenuId, MenuItemAction } from '../../../../../../platform/actions/common/actions.js';
@@ -202,6 +205,44 @@ suite('AgentHostFilterContribution', () => {
 		setDiscovering(false);
 		assert.ok(sheet.isConnected);
 		assert.strictEqual(document.activeElement, sheet.querySelector('[aria-checked="true"]'));
+	});
+
+	test('mobile sheet host list allows native touch scrolling and row selection', async () => {
+		const touchDevice = sinon.stub(Gesture, 'isTouchDevice').returns(true);
+		disposables.add({ dispose: () => touchDevice.restore() });
+		const { container, filterService } = await createPicker(Menus.MobileTitleBarCenter);
+		container.querySelector<HTMLElement>('.agent-host-filter-dropdown')!.click();
+		const body = container.querySelector<HTMLElement>('.host-picker-sheet-body')!;
+		const rows = body.querySelectorAll<HTMLElement>('.host-picker-sheet-item');
+		const row = rows[1];
+		assert.ok(row);
+
+		const makeTouch = (pageY: number): Touch => ({
+			identifier: 0, target: row, pageX: 100, pageY,
+			clientX: 100, clientY: pageY, screenX: 100, screenY: pageY,
+			force: 1, radiusX: 1, radiusY: 1, rotationAngle: 0,
+		});
+		const touch = makeTouch(100);
+		const touches: TouchList = { 0: touch, length: 1, item: index => index === 0 ? touch : null, [Symbol.iterator]: () => [touch].values() };
+		const emptyTouches: TouchList = { length: 0, item: () => null, [Symbol.iterator]: () => [].values() };
+		let touchMovePrevented = false;
+		for (const [type, pageY] of [['touchstart', 100], ['touchmove', 90], ['touchend', 90]] as const) {
+			const event = new mainWindow.Event(type, { bubbles: true, cancelable: true });
+			const changedTouch = makeTouch(pageY);
+			const changedTouches: TouchList = { 0: changedTouch, length: 1, item: index => index === 0 ? changedTouch : null, [Symbol.iterator]: () => [changedTouch].values() };
+			Object.defineProperties(event, {
+				touches: { value: type === 'touchend' ? emptyTouches : touches },
+				targetTouches: { value: type === 'touchend' ? emptyTouches : touches },
+				changedTouches: { value: changedTouches },
+			});
+			row.dispatchEvent(event);
+			if (type === 'touchmove') {
+				touchMovePrevented = event.defaultPrevented;
+			}
+		}
+
+		row.click();
+		assert.deepStrictEqual({ touchMovePrevented, selectedHostId: filterService.selectedHostId }, { touchMovePrevented: false, selectedHostId: 'Second' });
 	});
 
 	test('mobile updates preserve the focused unselected host without stealing focus from other controls', async () => {

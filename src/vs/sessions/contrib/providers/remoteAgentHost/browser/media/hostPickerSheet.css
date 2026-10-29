@@ -131,6 +131,7 @@
 	flex: 1 1 auto;
 	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
+	touch-action: pan-y;
 }
 
 .host-picker-sheet-section-title {
@@ -163,7 +164,7 @@
 	font-size: 15px;
 	text-align: left;
 	cursor: pointer;
-	touch-action: manipulation;
+	touch-action: pan-y;
 	font-family: inherit;
 }
 
